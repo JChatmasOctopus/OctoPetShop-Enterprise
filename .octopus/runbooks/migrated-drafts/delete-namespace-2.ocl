@@ -1,0 +1,50 @@
+name = "Delete namespace"
+default_guided_failure_mode = "EnvironmentDefault"
+description = "Deletes the namespaces created for this demo."
+
+connectivity_policy {
+    allow_deployments_to_no_targets = true
+}
+
+run_retention_policy {
+    quantity_to_keep = 3
+}
+
+process {
+    step "delete-namespace" {
+        name = "Delete namespace"
+        properties = {
+            Octopus.Action.TargetRoles = "Enterprise-Demo"
+        }
+
+        action {
+            action_type = "Octopus.KubernetesRunScript"
+            properties = {
+                Octopus.Action.KubernetesContainers.Namespace = "default"
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    # Init variables
+                    $namespace = $OctopusParameters['Octopus.Environment.Name'].ToLower()
+                    
+                    # Get existing namespaces
+                    Write-Host "Retrieving namespaces ..."
+                    $namespaces = (kubectl get namespaces -o JSON | ConvertFrom-Json)
+                    
+                    # Check to see if namespace exists
+                    if ($null -ne ($namespaces.Items | Where-Object {$_.metadata.name -eq $namespace}))
+                    {
+                    	# Create the namespace
+                        Write-Host "Deleting namespace #{Octopus.Environment.Name | ToLower} ..."
+                        kubectl delete namespace $namespace
+                    }
+                    else
+                    {
+                    	Write-Host "Namespace #{Octopus.Environment.Name | ToLower} doesn't exist, moving on ..."
+                    }
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+            }
+            worker_pool_variable = ""
+        }
+    }
+}

@@ -1,0 +1,393 @@
+name = "Create Infrastructure"
+default_guided_failure_mode = "EnvironmentDefault"
+description = "Creates a K8s cluster for the demonstration."
+
+connectivity_policy {
+    allow_deployments_to_no_targets = true
+}
+
+run_retention_policy {
+    quantity_to_keep = 3
+}
+
+process {
+    step "get-supported-kubernetes-versions" {
+        name = "Get supported Kubernetes Versions"
+
+        action {
+            action_type = "Octopus.AzurePowerShell"
+            properties = {
+                Octopus.Action.Azure.AccountId = "octopetshop-azure-subscription"
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    $resourceGroupName = $OctopusParameters["OctoPetShop.Enterprise.Resourcegroup.Name"]
+                    $resourceGroupLocation = $OctopusParameters["OctoPetShop.Enterprise.Location"]
+                    
+                    # Get supported version of Kubernetes in this region
+                    Write-Output "Querying supported Kubernetes versions in $resourceGroupLocation ..."
+                    $supportedVersions = (az aks get-versions --location $resourceGroupLocation) | ConvertFrom-JSON
+                    
+                    # Identify the highest version
+                    $highestVersion = ($supportedVersions.orchestrators | Measure-Object -Property orchestratorVersion -Maximum).Maximum
+                    
+                    # Set output variable
+                    Write-Output "Found $highestVersion ..."
+                    Set-OctopusVariable -Name "KubernetesVersion" -Value $highestVersion
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool_variable = "OctoPetShop.WorkerPool"
+        }
+    }
+
+    step "create-kubernetes-cluster" {
+        name = "Create Kubernetes cluster"
+
+        action {
+            action_type = "Octopus.AzureResourceGroup"
+            properties = {
+                Octopus.Action.Azure.AccountId = "octopetshop-azure-subscription"
+                Octopus.Action.Azure.ResourceGroupDeploymentMode = "Incremental"
+                Octopus.Action.Azure.ResourceGroupName = "#{OctoPetShop.Enterprise.Resourcegroup.Name}"
+                Octopus.Action.Azure.ResourceGroupTemplate = <<-EOT
+                    {
+                        "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+                        "contentVersion": "1.0.0.0",
+                        "parameters": {
+                            "resourceName": {
+                                "type": "String",
+                                "metadata": {
+                                    "description": "The name of the Managed Cluster resource."
+                                }
+                            },
+                            "location": {
+                                "type": "String",
+                                "metadata": {
+                                    "description": "The location of AKS resource."
+                                }
+                            },
+                            "dnsPrefix": {
+                                "type": "String",
+                                "metadata": {
+                                    "description": "Optional DNS prefix to use with hosted Kubernetes API server FQDN."
+                                }
+                            },      
+                            "osDiskSizeGB": {
+                                "defaultValue": 0,
+                                "minValue": 0,
+                                "maxValue": 1023,
+                                "type": "Int",
+                                "metadata": {
+                                    "description": "Disk size (in GiB) to provision for each of the agent pool nodes. This value ranges from 0 to 1023. Specifying 0 will apply the default disk size for that agentVMSize."
+                                }
+                            },
+                            "agentCount": {
+                                "defaultValue": 3,
+                                "minValue": 1,
+                                "maxValue": 100,
+                                "type": "Int",
+                                "metadata": {
+                                    "description": "The number of agent nodes for the cluster."
+                                }
+                            },
+                            "agentVMSize": {
+                                "defaultValue": "Standard_D2_v2",
+                                "type": "String",
+                                "metadata": {
+                                    "description": "The size of the Virtual Machine."
+                                }
+                            },
+                            "servicePrincipalClientId": {
+                                "type": "SecureString",
+                                "metadata": {
+                                    "description": "Client ID (used by cloudprovider)."
+                                }
+                            },
+                            "servicePrincipalClientSecret": {
+                                "type": "SecureString",
+                                "metadata": {
+                                    "description": "The Service Principal Client Secret."
+                                }
+                            },
+                            "osType": {
+                                "defaultValue": "Linux",
+                                "allowedValues": [
+                                    "Linux"
+                                ],
+                                "type": "String",
+                                "metadata": {
+                                    "description": "The type of operating system."
+                                }
+                            },
+                            "kubernetesVersion": {
+                                "defaultValue": "1.7.7",
+                                "type": "String",
+                                "metadata": {
+                                    "description": "The version of Kubernetes."
+                                }
+                            },
+                            "networkPlugin": {
+                                "allowedValues": [
+                                    "azure",
+                                    "kubenet"
+                                ],
+                                "type": "String",
+                                "metadata": {
+                                    "description": "Network plugin used for building Kubernetes network."
+                                }
+                            },
+                            "maxPods": {
+                                "defaultValue": 30,
+                                "type": "Int",
+                                "metadata": {
+                                    "description": "Maximum number of pods that can run on a node."
+                                }
+                            },
+                            "enableRBAC": {
+                                "defaultValue": true,
+                                "type": "Bool",
+                                "metadata": {
+                                    "description": "Boolean flag to turn on and off of RBAC."
+                                }
+                            },
+                            "vmssNodePool": {
+                                "defaultValue": false,
+                                "type": "Bool",
+                                "metadata": {
+                                    "description": "Boolean flag to turn on and off of VM scale sets"
+                                }
+                            },
+                            "windowsProfile": {
+                                "defaultValue": false,
+                                "type": "Bool",
+                                "metadata": {
+                                    "description": "Boolean flag to turn on and off of VM scale sets"
+                                }
+                            },
+                            "enablePrivateCluster": {
+                                "defaultValue": false,
+                                "type": "Bool",
+                                "metadata": {
+                                    "description": "Enable private network access to the Kubernetes cluster."
+                                }
+                            },
+                            "enableHttpApplicationRouting": {
+                                "defaultValue": true,
+                                "type": "Bool",
+                                "metadata": {
+                                    "description": "Boolean flag to turn on and off of http application routing."
+                                }
+                            }
+                        },
+                        "resources": [
+                            {
+                                "type": "Microsoft.ContainerService/managedClusters",
+                                "apiVersion": "2019-08-01",
+                                "name": "[parameters('resourceName')]",
+                                "location": "[parameters('location')]",
+                                "dependsOn": [],
+                                "tags": {
+                                  "octopus-environment": "Test",
+                                  "octopus-role": "Enterprise-Demo",
+                                  "octopus-space": "#{Octopus.Space.Name}",
+                                  "octopus-project": "#{Octopus.Project.Name}"
+                                },
+                                "properties": {
+                                    "kubernetesVersion": "[parameters('kubernetesVersion')]",
+                                    "dnsPrefix": "[parameters('dnsPrefix')]",              
+                                    "enableRBAC": "[parameters('enableRBAC')]",
+                                    "agentPoolProfiles": [
+                                        {
+                                            "name": "agentpool",
+                                            "osDiskSizeGB": "[parameters('osDiskSizeGB')]",
+                                            "count": "[parameters('agentCount')]",
+                                            "vmSize": "[parameters('agentVMSize')]",
+                                            "osType": "[parameters('osType')]",
+                                            "storageProfile": "ManagedDisks"
+                                        }
+                                    ],
+                                    "servicePrincipalProfile": {
+                                        "ClientId": "[parameters('servicePrincipalClientId')]",
+                                        "Secret": "[parameters('servicePrincipalClientSecret')]"                    
+                                    },
+                                    "networkProfile": {
+                                        "loadBalancerSku": "standard",
+                                        "networkPlugin": "[parameters('networkPlugin')]"
+                                    },
+                                    "apiServerAccessProfile": {
+                                        "enablePrivateCluster": "[parameters('enablePrivateCluster')]"
+                                    },
+                                    "addonProfiles": {
+                                        "httpApplicationRouting": {
+                                            "enabled": "[parameters('enableHttpApplicationRouting')]"
+                                        }
+                                    }
+                                }
+                            }
+                        ],
+                        "outputs": {
+                            "controlPlaneFQDN": {
+                                "type": "String",
+                                "value": "[reference(concat('Microsoft.ContainerService/managedClusters/', parameters('resourceName'))).fqdn]"
+                            }
+                        }
+                    }
+                    EOT
+                Octopus.Action.Azure.ResourceGroupTemplateParameters = "{\"resourceName\":{\"value\":\"#{OctoPetShop.Enterprise.Cluster.Name}\"},\"location\":{\"value\":\"#{OctoPetShop.Enterprise.Location}\"},\"dnsPrefix\":{\"value\":\"#{OctoPetShop.Enterprise.Resourcegroup.Name}\"},\"osDiskSizeGB\":{\"value\":32},\"agentCount\":{\"value\":3},\"agentVMSize\":{\"value\":\"Standard_B2ms\"},\"servicePrincipalClientId\":{\"value\":\"#{OctoPetShop.Azure.Account.Client}\"},\"servicePrincipalClientSecret\":{\"value\":\"#{OctoPetShop.Azure.Account.Password}\"},\"osType\":{\"value\":\"Linux\"},\"kubernetesVersion\":{\"value\":\"#{Octopus.Action[Get supported Kubernetes Versions].Output.KubernetesVersion}\"},\"networkPlugin\":{\"value\":\"kubenet\"},\"maxPods\":{\"value\":30},\"enableRBAC\":{\"value\":\"true\"},\"vmssNodePool\":{\"value\":\"false\"},\"windowsProfile\":{\"value\":\"false\"},\"enablePrivateCluster\":{\"value\":\"false\"},\"enableHttpApplicationRouting\":{\"value\":\"False\"}}"
+                Octopus.Action.Azure.TemplateSource = "Inline"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool_variable = "OctoPetShop.WorkerPool"
+        }
+    }
+
+    step "add-cluster-as-target" {
+        name = "Add cluster as target"
+
+        action {
+            action_type = "Octopus.Script"
+            is_disabled = true
+            properties = {
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    # Get the variables
+                    $clusterName = $OctopusParameters['OctoPetShop.Enterprise.Cluster.Name']
+                    $resourceGroupName = $OctopusParameters["OctoPetShop.Enterprise.Resourcegroup.Name"]
+                    $azureLocation = $OctopusParameters['OctoPetShop.Enterprise.Location']
+                    
+                    # Add new Kubernetes cluster target
+                    New-OctopusKubernetesTarget -Name "$clusterName-#{Octopus.Environment.Name}" -clusterName $clusterName -clusterResourceGroup $resourceGroupName -octopusRoles "Enterprise-Demo" -octopusAccountIdOrName "#{OctoPetShop.Azure.Account}" -namespace "#{Octopus.Environment.Name | ToLower}" -skipTlsVerification $true -octopusDefaultWorkerPoolIdOrName "Hosted Windows" #-healthCheckContainerImageFeedIdOrName "Docker Feed TF" -healthCheckContainerImage "octopusdeploy/worker-tools:3-ubuntu.18.04"
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+            }
+            worker_pool = "hosted-windows"
+        }
+    }
+
+    step "add-remaining-environments" {
+        name = "Add remaining environments"
+
+        action {
+            action_type = "Octopus.Script"
+            environments = ["production"]
+            is_disabled = true
+            properties = {
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    $octopusUrl = $OctopusParameters['Global.Octopus.ServerUrl']
+                    $octopusApiKey = $OctopusParameters['OctoPetShop.Api.Key']
+                    $headers = @{ "X-Octopus-ApiKey" = $octopusApiKey }
+                    $spaceId = $OctopusParameters['Octopus.Space.Id']
+                    $environmentName = $OctopusParameters['Octopus.Environment.Name']
+                    
+                    # Get the variables
+                    $clusterName = $OctopusParameters['OctoPetShop.Enterprise.Cluster.Name']
+                    $resourceGroupName = $OctopusParameters["OctoPetShop.Enterprise.Resourcegroup.Name"]
+                    $azureLocation = $OctopusParameters['OctoPetShop.Enterprise.Location']
+                    $azureServicePrincipalClientId = $OctopusParameters['Azure.Account.Client']
+                    $azureServicePrincipalSecretKey = $OctopusParameters['Azure.Account.Password']
+                    
+                    New-OctopusKubernetesTarget -Name "$clusterName-#{Octopus.Environment.Name}" -clusterName $clusterName -clusterResourceGroup $resourceGroupName -octopusRoles "Enterprise-Demo" -octopusAccountIdOrName "#{OctoPetShop.Azure.Account}" -namespace "#{Octopus.Environment.Name | ToLower}" -skipTlsVerification $true -octopusDefaultWorkerPoolIdOrName "Hosted Windows" #-healthCheckContainerImageFeedIdOrName "Docker Feed TF" -healthCheckContainerImage "octopusdeploy/worker-tools:3-ubuntu.18.04"
+                    
+                    <#
+                    # Get Environments
+                    $environments = (Invoke-RestMethod -Method Get -Uri "$octopusUrl/api/$spaceId/environments?&skip=0&take=100" -Headers $headers).Items | Where-Object {$_.Name -ne $environmentName -and $_.Name -ne "Test"}
+                    
+                    # Add remaining environments to target
+                    foreach ($environment in $environments)
+                    {
+                        # Add new Kubernetes cluster target
+                    	New-OctopusKubernetesTarget -Name "$clusterName-$($environment.Name)" -clusterName $clusterName -clusterResourceGroup $resourceGroupName -octopusRoles "Enterprise-Demo" -octopusAccountIdOrName "#{OctoPetShop.Azure.Account}" -namespace "$($environment.Name.ToLower())" -environment "$($environment.Name)" -skipTlsVerification $true -octopusDefaultWorkerPoolIdOrName "Hosted Windows"
+                        #Invoke-RestMethod -Method Post -Uri "$octopusUrl/api/$spaceId/machines" -Body ($cluster | ConvertTo-Json -Depth 10) -Headers $headers
+                    }
+                    #>
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+
+            container {
+                feed = "docker-hub"
+                image = "octopusdeploy/worker-tools:ubuntu.18.04"
+            }
+        }
+    }
+
+    step "add-development-target" {
+        name = "Add Development target"
+
+        action {
+            properties = {
+                Octopus.Action.Template.Id = "ActionTemplates-1013"
+                Octopus.Action.Template.Version = "14"
+                Run.Runbook.Api.Key = "#{OctoPetShop.Api.Key}"
+                Run.Runbook.AutoApproveManualInterventions = "No"
+                Run.Runbook.Base.Url = "#{Octopus.Web.ServerUri}"
+                Run.Runbook.CancelInSeconds = "1800"
+                Run.Runbook.DateTime = "N/A"
+                Run.Runbook.Environment.Name = "Development"
+                Run.Runbook.Machines = "N/A"
+                Run.Runbook.ManualIntervention.EnvironmentToUse = "#{Octopus.Environment.Name}"
+                Run.Runbook.Name = "Add Cluster Target"
+                Run.Runbook.Project.Name = "#{Octopus.Project.Name}"
+                Run.Runbook.Space.Name = "#{Octopus.Space.Name}"
+                Run.Runbook.UsePublishedSnapShot = "True"
+                Run.Runbook.Waitforfinish = "False"
+            }
+            worker_pool_variable = "OctoPetShop.WorkerPool"
+        }
+    }
+
+    step "add-production-target" {
+        name = "Add Production target"
+
+        action {
+            properties = {
+                Octopus.Action.Template.Id = "ActionTemplates-1013"
+                Octopus.Action.Template.Version = "14"
+                Run.Runbook.Api.Key = "#{OctoPetShop.Api.Key}"
+                Run.Runbook.AutoApproveManualInterventions = "No"
+                Run.Runbook.Base.Url = "#{Octopus.Web.ServerUri}"
+                Run.Runbook.CancelInSeconds = "1800"
+                Run.Runbook.DateTime = "N/A"
+                Run.Runbook.Environment.Name = "Production"
+                Run.Runbook.Machines = "N/A"
+                Run.Runbook.ManualIntervention.EnvironmentToUse = "#{Octopus.Environment.Name}"
+                Run.Runbook.Name = "Add Cluster Target"
+                Run.Runbook.Project.Name = "#{Octopus.Project.Name}"
+                Run.Runbook.Space.Name = "#{Octopus.Space.Name}"
+                Run.Runbook.UsePublishedSnapShot = "True"
+                Run.Runbook.Waitforfinish = "False"
+            }
+            worker_pool_variable = "OctoPetShop.WorkerPool"
+        }
+    }
+
+    step "create-dedicated-worker" {
+        name = "Create dedicated worker"
+
+        action {
+            is_disabled = true
+            properties = {
+                Octopus.Action.Template.Id = "ActionTemplates-1013"
+                Octopus.Action.Template.Version = "14"
+                Run.Runbook.Api.Key = "#{OctoPetShop.Api.Key}"
+                Run.Runbook.AutoApproveManualInterventions = "No"
+                Run.Runbook.Base.Url = "#{Octopus.Web.ServerUri}"
+                Run.Runbook.CancelInSeconds = "1800"
+                Run.Runbook.DateTime = "N/A"
+                Run.Runbook.Environment.Name = "Production"
+                Run.Runbook.Machines = "N/A"
+                Run.Runbook.ManualIntervention.EnvironmentToUse = "#{Octopus.Environment.Name}"
+                Run.Runbook.Name = "Create dedicated worker"
+                Run.Runbook.Project.Name = "#{Octopus.Project.Name}"
+                Run.Runbook.Space.Name = "#{Octopus.Space.Name}"
+                Run.Runbook.UsePublishedSnapShot = "True"
+                Run.Runbook.Waitforfinish = "False"
+            }
+            worker_pool_variable = "OctoPetShop.WorkerPool"
+        }
+    }
+}

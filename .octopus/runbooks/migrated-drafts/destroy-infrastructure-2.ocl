@@ -1,0 +1,106 @@
+name = "Destroy Infrastructure"
+default_guided_failure_mode = "EnvironmentDefault"
+description = "Destroys the Kubernetes cluster."
+
+connectivity_policy {
+    allow_deployments_to_no_targets = true
+}
+
+run_retention_policy {
+    quantity_to_keep = 3
+}
+
+process {
+    step "deregister-machines" {
+        name = "Deregister machines"
+
+        action {
+            action_type = "Octopus.Script"
+            properties = {
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    
+                    # Get variables
+                    $baseUrl = $OctopusParameters['Global.Octopus.ServerUrl'] 
+                    $apiKey = $OctopusParameters['OctoPetShop.Api.Key']
+                    $header = @{ "X-Octopus-ApiKey" = $apiKey } 
+                    $spaceId = $OctopusParameters['Octopus.Space.Id']
+                    $spaceName = $OctopusParameters['Octopus.Space.Name']
+                    $workerPoolName = "K8s Worker"
+                    $roleName = "Enterprise-Demo"
+                    
+                    if ($baseUrl.EndsWith("/"))
+                    {
+                    	$baseUrl = $baseUrl.SubString(0, $baseUrl.LastIndexOf("/"))
+                    }
+                    
+                    # Get targets
+                    Write-Host "Getting all targets with role: $roleName"
+                    $targets = (Invoke-RestMethod -Method Get -Uri "$baseUrl/api/$spaceId/machines?roles=$roleName" -Headers $header)
+                    
+                    # Loop through machines
+                    foreach ($target in $targets.Items)
+                    {
+                    	# Deregister target
+                        Write-Host "Deleting machine: $($target.Name) ..."
+                        Invoke-RestMethod -Method Delete -Uri "$baseUrl/api/$spaceId/machines/$($target.Id)" -Headers $header
+                    }
+                    
+                    # Get worker pool
+                    $workerPool = ((Invoke-RestMethod -Method Get -Uri "$baseUrl/api/$spaceId/workerpools" -Headers $header).Items | Where-Object {$_.Name -eq $workerPoolName})
+                    
+                    # Get workers from pool
+                    $workers = (Invoke-RestMethod -Method Get -Uri "$baseUrl/api/$spaceId/workerpools/$($workerPool.Id)/workers" -Headers $header)
+                    
+                    # Loop through workers
+                    foreach ($worker in $workers.Items)
+                    {
+                    	Write-Host "Deleting $($worker.Name) ..."
+                        Invoke-RestMethod -Method Delete -Uri "$baseUrl/api/$spaceId/workers/$($worker.Id)" -Headers $header
+                    }
+                    
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+            }
+            worker_pool = "hosted-windows"
+        }
+    }
+
+    step "delete-kubernetes-cluster" {
+        name = "Delete Kubernetes cluster"
+
+        action {
+            action_type = "Octopus.AzurePowerShell"
+            properties = {
+                Octopus.Action.Azure.AccountId = "octopetshop-azure-subscription"
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    # Get variables
+                    $clusterName = $OctopusParameters["OctoPetShop.Enterprise.Cluster.Name"]
+                    $resourceGroupName = $OctopusParameters["OctoPetShop.Enterprise.Resourcegroup.Name"]
+                    
+                    # Get list of clusters 
+                    $clusters = (az aks list --resource-group $resourceGroupName --output JSON | ConvertFrom-Json)
+                    
+                    # Loop through results
+                    foreach ($cluster in $clusters)
+                    {
+                    	# Check the name
+                        if ($cluster.name -eq $clusterName)
+                        {
+                        	az aks delete --name $clusterName --resource-group $resourceGroupName --yes
+                        }
+                    }
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+
+            container {
+                feed = "docker-hub"
+                image = "octopusdeploy/worker-tools:ubuntu.18.04"
+            }
+        }
+    }
+}

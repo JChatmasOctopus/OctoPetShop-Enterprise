@@ -1,0 +1,118 @@
+name = "Destroy worker"
+default_guided_failure_mode = "EnvironmentDefault"
+description = "Destroys the dedicated worker for the cluster."
+
+connectivity_policy {
+    allow_deployments_to_no_targets = true
+}
+
+run_retention_policy {
+    quantity_to_keep = 3
+}
+
+process {
+    step "deregister-worker" {
+        name = "Deregister worker"
+
+        action {
+            action_type = "Octopus.Script"
+            properties = {
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    
+                    # Get variables
+                    $baseUrl = $OctopusParameters['Global.Octopus.ServerUrl'] 
+                    $apiKey = $OctopusParameters['OctoPetShop.Api.Key']
+                    $header = @{ "X-Octopus-ApiKey" = $apiKey } 
+                    $spaceId = $OctopusParameters['Octopus.Space.Id']
+                    $spaceName = $OctopusParameters['Octopus.Space.Name']
+                    $workerPoolName = "K8s Worker"
+                    
+                    if ($baseUrl.EndsWith("/"))
+                    {
+                    	$baseUrl = $baseUrl.SubString(0, $baseUrl.LastIndexOf("/"))
+                    }
+                    
+                    # Get worker pool
+                    $workerPool = ((Invoke-RestMethod -Method Get -Uri "$baseUrl/api/$spaceId/workerpools" -Headers $header).Items | Where-Object {$_.Name -eq $workerPoolName})
+                    
+                    # Get workers from pool
+                    $workers = (Invoke-RestMethod -Method Get -Uri "$baseUrl/api/$spaceId/workerpools/$($workerPool.Id)/workers" -Headers $header)
+                    
+                    # Loop through workers
+                    foreach ($worker in $workers.Items)
+                    {
+                    	Write-Host "Deleting $($worker.Name) ..."
+                        Invoke-RestMethod -Method Delete -Uri "$baseUrl/api/$spaceId/workers/$($worker.Id)" -Headers $header
+                    }
+                    
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+            }
+            worker_pool = "hosted-windows"
+        }
+    }
+
+    step "deploy-worker-containers" {
+        name = "Deploy worker containers"
+        properties = {
+            Octopus.Action.TargetRoles = "Enterprise-Demo"
+        }
+
+        action {
+            action_type = "Octopus.KubernetesDeployContainers"
+            properties = {
+                Octopus.Action.EnabledFeatures = ",Octopus.Features.KubernetesService,Octopus.Features.KubernetesIngress,Octopus.Features.KubernetesConfigMap,Octopus.Features.KubernetesSecret"
+                Octopus.Action.Kubernetes.ServerSideApply.Enabled = "False"
+                Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts = "False"
+                Octopus.Action.KubernetesContainers.Containers = "[{\"Name\":\"tentacle-worker\",\"Ports\":[],\"EnvironmentVariables\":[{\"key\":\"ServerApiKey\",\"keyError\":null,\"value\":\"#{OctoPetShop.Api.Key}\",\"valueError\":null,\"option\":\"\",\"optionError\":null,\"option2\":\"\",\"option2Error\":null},{\"key\":\"ServerUrl\",\"keyError\":null,\"value\":\"#{Global.Octopus.ServerUrl}\",\"valueError\":null,\"option\":\"\",\"optionError\":null,\"option2\":\"\",\"option2Error\":null},{\"key\":\"ACCEPT_EULA\",\"keyError\":null,\"value\":\"Y\",\"valueError\":null,\"option\":\"\",\"optionError\":null,\"option2\":\"\",\"option2Error\":null},{\"key\":\"TargetWorkerPool\",\"keyError\":null,\"value\":\"K8s Worker\",\"valueError\":null,\"option\":\"\",\"optionError\":null,\"option2\":\"\",\"option2Error\":null},{\"key\":\"ServerPort\",\"keyError\":null,\"value\":\"10943\",\"valueError\":null,\"option\":\"\",\"optionError\":null,\"option2\":\"\",\"option2Error\":null},{\"key\":\"Space\",\"keyError\":null,\"value\":\"#{Octopus.Space.Name}\",\"valueError\":null,\"option\":\"\",\"optionError\":null,\"option2\":\"\",\"option2Error\":null}],\"SecretEnvironmentVariables\":[],\"ConfigMapEnvironmentVariables\":[],\"FieldRefEnvironmentVariables\":[],\"ConfigMapEnvFromSource\":[],\"SecretEnvFromSource\":[],\"VolumeMounts\":[],\"Resources\":{\"requests\":{\"memory\":\"\",\"cpu\":\"\",\"ephemeralStorage\":\"\",\"amdGpu\":\"\",\"nvidiaGpu\":\"\",\"storage\":\"\"},\"limits\":{\"memory\":\"\",\"cpu\":\"\",\"ephemeralStorage\":\"\",\"amdGpu\":\"\",\"nvidiaGpu\":\"\",\"storage\":\"\"}},\"LivenessProbe\":{\"failureThreshold\":\"\",\"initialDelaySeconds\":\"\",\"periodSeconds\":\"\",\"successThreshold\":\"\",\"timeoutSeconds\":\"\",\"type\":\"\",\"exec\":{\"command\":[]},\"httpGet\":{\"host\":\"\",\"path\":\"\",\"port\":\"\",\"scheme\":\"\",\"httpHeaders\":[]},\"tcpSocket\":{\"host\":\"\",\"port\":\"\"}},\"ReadinessProbe\":{\"failureThreshold\":\"\",\"initialDelaySeconds\":\"\",\"periodSeconds\":\"\",\"successThreshold\":\"\",\"timeoutSeconds\":\"\",\"type\":\"\",\"exec\":{\"command\":[]},\"httpGet\":{\"host\":\"\",\"path\":\"\",\"port\":\"\",\"scheme\":\"\",\"httpHeaders\":[]},\"tcpSocket\":{\"host\":\"\",\"port\":\"\"}},\"StartupProbe\":{\"failureThreshold\":\"\",\"initialDelaySeconds\":\"\",\"periodSeconds\":\"\",\"successThreshold\":\"\",\"timeoutSeconds\":\"\",\"type\":\"\",\"exec\":{\"command\":[]},\"httpGet\":{\"host\":\"\",\"path\":\"\",\"port\":\"\",\"scheme\":\"\",\"httpHeaders\":[]},\"tcpSocket\":{\"host\":\"\",\"port\":\"\"}},\"Command\":[],\"Args\":[],\"SecurityContext\":{\"allowPrivilegeEscalation\":\"\",\"privileged\":\"True\",\"readOnlyRootFilesystem\":\"\",\"runAsGroup\":\"\",\"runAsNonRoot\":\"\",\"runAsUser\":\"\",\"capabilities\":{\"add\":[],\"drop\":[]},\"seLinuxOptions\":{\"level\":\"\",\"role\":\"\",\"type\":\"\",\"user\":\"\"}},\"TerminationMessagePath\":\"\",\"TerminationMessagePolicy\":\"\",\"Lifecycle\":{\"PreStop\":null,\"PostStart\":null},\"CreateFeedSecrets\":\"True\"}]"
+                Octopus.Action.KubernetesContainers.DeploymentName = "workers-deployment"
+                Octopus.Action.KubernetesContainers.DeploymentResourceType = "Deployment"
+                Octopus.Action.KubernetesContainers.DeploymentStyle = "RollingUpdate"
+                Octopus.Action.KubernetesContainers.DeploymentWait = "Wait"
+                Octopus.Action.KubernetesContainers.IngressAnnotations = "[]"
+                Octopus.Action.KubernetesContainers.MaxUnavailable = "0"
+                Octopus.Action.KubernetesContainers.Namespace = "worker"
+                Octopus.Action.KubernetesContainers.PodManagementPolicy = "OrderedReady"
+                Octopus.Action.KubernetesContainers.Replicas = "0"
+                Octopus.Action.KubernetesContainers.ServiceNameType = "External"
+                Octopus.Action.KubernetesContainers.ServiceType = "ClusterIP"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+
+            container {
+                feed = "docker-hub"
+                image = "octopusdeploy/worker-tools:ubuntu.18.04"
+            }
+
+            packages "tentacle-worker" {
+                acquisition_location = "NotAcquired"
+                feed = "docker-hub"
+                package_id = "octopusdeploy/tentacle"
+                properties = {
+                    Extract = "False"
+                    PackageParameterName = ""
+                    SelectionMode = "immediate"
+                }
+            }
+        }
+    }
+
+    step "destroy-worker-container" {
+        name = "Destroy worker container"
+        properties = {
+            Octopus.Action.TargetRoles = "Enterprise-Demo"
+        }
+
+        action {
+            action_type = "Octopus.KubernetesRunScript"
+            properties = {
+                Octopus.Action.Script.ScriptBody = "kubectl delete all --all --namespace worker"
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+            }
+            worker_pool_variable = ""
+        }
+    }
+}

@@ -1,0 +1,475 @@
+step "notify-deployment-starting" {
+    name = "Notify Production Deployment Starting"
+
+    action {
+        environments = ["production"]
+        properties = {
+            Octopus.Action.Template.Id = "ActionTemplates-1021"
+            Octopus.Action.Template.Version = "4"
+        }
+        worker_pool = "aws-worker-pool"
+    }
+}
+
+step "create-development-cluster" {
+    name = "Provision Development K8s Cluster in AKS"
+
+    action {
+        action_type = "Octopus.TerraformApply"
+        environments = ["development"]
+        properties = {
+            Octopus.Action.GoogleCloud.ImpersonateServiceAccount = "False"
+            Octopus.Action.GoogleCloud.UseVMServiceAccount = "True"
+            Octopus.Action.Script.ScriptSource = "Inline"
+            Octopus.Action.Terraform.AllowPluginDownloads = "True"
+            Octopus.Action.Terraform.AzureAccount = "False"
+            Octopus.Action.Terraform.GoogleCloudAccount = "False"
+            Octopus.Action.Terraform.ManagedAccount = "None"
+            Octopus.Action.Terraform.PlanJsonOutput = "False"
+            Octopus.Action.Terraform.RunAutomaticFileSubstitution = "True"
+            Octopus.Action.Terraform.Template = <<-EOT
+                provider "null" {}
+                
+                resource "null_resource" "example" {
+                  provisioner "local-exec" {
+                    command = "echo 'Creating dev cluster in AKS'"
+                  }
+                }
+                
+                EOT
+            Octopus.Action.Terraform.TemplateParameters = "{}"
+            OctopusUseBundledTooling = "False"
+        }
+        worker_pool = "hosted-ubuntu"
+
+        container {
+            feed = "docker-hub"
+            image = "octopusdeploy/worker-tools:6.4.0-ubuntu.22.04"
+        }
+    }
+}
+
+step "deploy-sqlserver-container" {
+    name = "Deploy SqlServer container"
+    properties = {
+        Octopus.Action.TargetRoles = "demo-k8s-cluster"
+    }
+
+    action {
+        action_type = "Octopus.KubernetesDeployContainers"
+        properties = {
+            Octopus.Action.EnabledFeatures = ",Octopus.Features.KubernetesService,Octopus.Features.KubernetesIngress,Octopus.Features.KubernetesConfigMap,Octopus.Features.KubernetesSecret"
+            Octopus.Action.Kubernetes.ResourceStatusCheck = "True"
+            Octopus.Action.Kubernetes.ServerSideApply.Enabled = "False"
+            Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts = "False"
+            Octopus.Action.KubernetesContainers.Containers = "[{\"Name\":\"sqlserver\",\"Ports\":[{\"key\":\"sql\",\"keyError\":null,\"value\":\"1433\",\"valueError\":null,\"option\":\"TCP\",\"optionError\":null,\"option2\":\"\",\"option2Error\":null}],\"EnvironmentVariables\":[{\"key\":\"ACCEPT_EULA\",\"keyError\":null,\"value\":\"Y\",\"valueError\":null,\"option\":\"\",\"optionError\":null,\"option2\":\"\",\"option2Error\":null},{\"key\":\"SA_PASSWORD\",\"keyError\":null,\"value\":\"#{OctoPetShop.Database.Password}\",\"valueError\":null,\"option\":\"\",\"optionError\":null,\"option2\":\"\",\"option2Error\":null}],\"SecretEnvironmentVariables\":[],\"ConfigMapEnvironmentVariables\":[],\"FieldRefEnvironmentVariables\":[],\"ConfigMapEnvFromSource\":[],\"SecretEnvFromSource\":[],\"VolumeMounts\":[],\"Resources\":{\"requests\":{\"memory\":\"\",\"cpu\":\"\",\"ephemeralStorage\":\"\",\"amdGpu\":\"\",\"nvidiaGpu\":\"\",\"storage\":\"\"},\"limits\":{\"memory\":\"\",\"cpu\":\"\",\"ephemeralStorage\":\"\",\"amdGpu\":\"\",\"nvidiaGpu\":\"\",\"storage\":\"\"}},\"LivenessProbe\":{\"failureThreshold\":\"\",\"initialDelaySeconds\":\"\",\"periodSeconds\":\"\",\"successThreshold\":\"\",\"timeoutSeconds\":\"\",\"type\":\"\",\"exec\":{\"command\":[]},\"httpGet\":{\"host\":\"\",\"path\":\"\",\"port\":\"\",\"scheme\":\"\",\"httpHeaders\":[]},\"tcpSocket\":{\"host\":\"\",\"port\":\"\"}},\"ReadinessProbe\":{\"failureThreshold\":\"\",\"initialDelaySeconds\":\"\",\"periodSeconds\":\"\",\"successThreshold\":\"\",\"timeoutSeconds\":\"\",\"type\":\"\",\"exec\":{\"command\":[]},\"httpGet\":{\"host\":\"\",\"path\":\"\",\"port\":\"\",\"scheme\":\"\",\"httpHeaders\":[]},\"tcpSocket\":{\"host\":\"\",\"port\":\"\"}},\"StartupProbe\":{\"failureThreshold\":\"\",\"initialDelaySeconds\":\"\",\"periodSeconds\":\"\",\"successThreshold\":\"\",\"timeoutSeconds\":\"\",\"type\":\"\",\"exec\":{\"command\":[]},\"httpGet\":{\"host\":\"\",\"path\":\"\",\"port\":\"\",\"scheme\":\"\",\"httpHeaders\":[]},\"tcpSocket\":{\"host\":\"\",\"port\":\"\"}},\"Command\":[],\"Args\":[],\"SecurityContext\":{\"allowPrivilegeEscalation\":\"\",\"privileged\":\"\",\"readOnlyRootFilesystem\":\"\",\"runAsGroup\":\"\",\"runAsNonRoot\":\"\",\"runAsUser\":\"\",\"capabilities\":{\"add\":[],\"drop\":[]},\"seLinuxOptions\":{\"level\":\"\",\"role\":\"\",\"type\":\"\",\"user\":\"\"}},\"TerminationMessagePath\":\"\",\"TerminationMessagePolicy\":\"\",\"Lifecycle\":{\"PreStop\":null,\"PostStart\":null},\"CreateFeedSecrets\":\"True\"}]"
+            Octopus.Action.KubernetesContainers.DeploymentLabels = "{\"component\":\"database\"}"
+            Octopus.Action.KubernetesContainers.DeploymentName = "#{OctoPetShop.Database.ServiceName}"
+            Octopus.Action.KubernetesContainers.DeploymentResourceType = "Deployment"
+            Octopus.Action.KubernetesContainers.DeploymentStyle = "RollingUpdate"
+            Octopus.Action.KubernetesContainers.DeploymentWait = "NoWait"
+            Octopus.Action.KubernetesContainers.IngressAnnotations = "[]"
+            Octopus.Action.KubernetesContainers.Namespace = "#{OctoPetShop.Cluster.Namespace}"
+            Octopus.Action.KubernetesContainers.PodManagementPolicy = "OrderedReady"
+            Octopus.Action.KubernetesContainers.Replicas = "1"
+            Octopus.Action.KubernetesContainers.ServiceName = "#{OctoPetShop.Database.ServiceName}"
+            Octopus.Action.KubernetesContainers.ServiceNameType = "External"
+            Octopus.Action.KubernetesContainers.ServicePorts = "[{\"name\":\"sql\",\"port\":\"1433\",\"targetPort\":\"1433\",\"nodePort\":\"\",\"protocol\":\"TCP\"}]"
+            Octopus.Action.KubernetesContainers.ServiceType = "ClusterIP"
+            OctopusUseBundledTooling = "False"
+        }
+        worker_pool = "azure-worker-pool"
+
+        packages "sqlserver" {
+            acquisition_location = "NotAcquired"
+            feed = "microsoft-container-registry"
+            package_id = "mssql/server"
+            properties = {
+                Extract = "False"
+                PackageParameterName = ""
+                SelectionMode = "immediate"
+            }
+        }
+    }
+}
+
+step "deploy-kubernetes-yaml" {
+    name = "Deploy API Service"
+    properties = {
+        Octopus.Action.TargetRoles = "demo-k8s-cluster"
+    }
+
+    action {
+        action_type = "Octopus.KubernetesDeployRawYaml"
+        properties = {
+            Octopus.Action.Kubernetes.DeploymentTimeout = "180"
+            Octopus.Action.Kubernetes.ResourceStatusCheck = "True"
+            Octopus.Action.Kubernetes.ServerSideApply.Enabled = "False"
+            Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts = "True"
+            Octopus.Action.KubernetesContainers.CustomResourceYaml = <<-EOT
+                apiVersion: v1
+                kind: Secret
+                metadata:
+                  name: '#{OctoPetShop.K8s.API.SecretName}'
+                  namespace: '#{OctoPetShop.Cluster.Namespace}'
+                data:
+                  ops-connectionstring: '#{OctoPetShop.Database.ConnectionString | ToBase64}'
+                ---
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: '#{OctoPetShop.ProductApi.ServiceName}'
+                  labels:
+                    component: product
+                  namespace: '#{OctoPetShop.Cluster.Namespace}'
+                spec:
+                  selector:
+                    matchLabels:
+                      octopusexport: OctopusExport
+                  replicas: 1
+                  strategy:
+                    type: RollingUpdate
+                  template:
+                    metadata:
+                      labels:
+                        component: product
+                        octopusexport: OctopusExport
+                    spec:
+                      containers:
+                        - name: product-api
+                          image: index.docker.io/#{Octopus.Action.Package[octopetshop-productservice-enterprise].PackageId}:#{Octopus.Action.Package[octopetshop-productservice-enterprise].PackageVersion}
+                          env:
+                            - name: OPSConnectionString
+                              valueFrom:
+                                secretKeyRef:
+                                  name: '#{OctoPetShop.K8s.API.SecretName}'
+                                  key: ops-connectionstring
+                          resources:
+                            requests:
+                              memory: '#{OctoPetShop.WebApp.Container.MemoryRequest}'
+                            limits:
+                              memory: '#{OctoPetShop.WebApp.Container.MemoryLimit}'
+                EOT
+            Octopus.Action.KubernetesContainers.Namespace = "#{OctoPetShop.Cluster.Namespace}"
+            Octopus.Action.Package.JsonConfigurationVariablesTargets = "**/*.{yml,yaml}"
+            Octopus.Action.Script.ScriptSource = "Inline"
+        }
+        worker_pool = "azure-worker-pool"
+
+        packages "octopetshop-productservice-enterprise" {
+            acquisition_location = "NotAcquired"
+            feed = "docker-hub"
+            package_id = "octopussamples/octopetshop-productservice-enterprise"
+            properties = {
+                Extract = "False"
+                Purpose = "DockerImageReference"
+                SelectionMode = "immediate"
+            }
+        }
+    }
+}
+
+step "deploy-cart-service" {
+    name = "Deploy Cart Service"
+    properties = {
+        Octopus.Action.TargetRoles = "demo-k8s-cluster"
+    }
+
+    action {
+        action_type = "Octopus.KubernetesDeployRawYaml"
+        properties = {
+            Octopus.Action.Kubernetes.DeploymentTimeout = "180"
+            Octopus.Action.Kubernetes.ResourceStatusCheck = "True"
+            Octopus.Action.Kubernetes.ServerSideApply.Enabled = "False"
+            Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts = "True"
+            Octopus.Action.KubernetesContainers.CustomResourceYaml = <<-EOT
+                apiVersion: v1
+                kind: Secret
+                metadata:
+                  name: '#{OctoPetShop.K8s.Cart.SecretName}'
+                  namespace: '#{OctoPetShop.Cluster.Namespace}'
+                data:
+                  ops-connectionstring: '#{OctoPetShop.Database.ConnectionString | ToBase64}'
+                ---
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: '#{OctoPetShop.ShoppingCartApi.ServiceName}'
+                  labels:
+                    component: shoppingcart
+                  namespace: '#{OctoPetShop.Cluster.Namespace}'
+                spec:
+                  selector:
+                    matchLabels:
+                      octopusexport: OctopusExport
+                  replicas: 1
+                  strategy:
+                    type: RollingUpdate
+                  template:
+                    metadata:
+                      labels:
+                        component: shoppingcart
+                        octopusexport: OctopusExport
+                    spec:
+                      containers:
+                        - name: shoppingcart-api
+                          image: index.docker.io/#{Octopus.Action.Package[octopetshop-shoppingcartservice-enterprise].PackageId}:#{Octopus.Action.Package[octopetshop-shoppingcartservice-enterprise].PackageVersion}
+                          env:
+                            - name: OPSConnecectionString
+                              valueFrom:
+                                secretKeyRef:
+                                  name: '#{OctoPetShop.K8s.Cart.SecretName}'
+                                  key: ops-connectionstring
+                          resources:
+                            requests:
+                              memory: '#{OctoPetShop.WebApp.Container.MemoryRequest}'
+                            limits:
+                              memory: '#{OctoPetShop.WebApp.Container.MemoryLimit}'
+                EOT
+            Octopus.Action.KubernetesContainers.Namespace = "#{OctoPetShop.Cluster.Namespace}"
+            Octopus.Action.Package.JsonConfigurationVariablesTargets = "**/*.{yml,yaml}"
+            Octopus.Action.Script.ScriptSource = "Inline"
+        }
+        worker_pool = "azure-worker-pool"
+
+        packages "octopetshop-shoppingcartservice-enterprise" {
+            acquisition_location = "NotAcquired"
+            feed = "docker-hub"
+            package_id = "octopussamples/octopetshop-shoppingcartservice-enterprise"
+            properties = {
+                Extract = "False"
+                Purpose = "DockerImageReference"
+                SelectionMode = "immediate"
+            }
+        }
+    }
+}
+
+step "create-web-app-service" {
+    name = "Create Web App service"
+    properties = {
+        Octopus.Action.TargetRoles = "demo-k8s-cluster"
+    }
+
+    action {
+        action_type = "Octopus.KubernetesDeployRawYaml"
+        notes = ""
+        properties = {
+            Octopus.Action.Kubernetes.ResourceStatusCheck = "True"
+            Octopus.Action.Kubernetes.ServerSideApply.Enabled = "False"
+            Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts = "False"
+            Octopus.Action.KubernetesContainers.CustomResourceYaml = <<-EOT
+                apiVersion: v1
+                kind: Service
+                metadata:
+                  name: '#{OctoPetShop.WebApp.ServiceName}'
+                  namespace: '#{OctoPetShop.Cluster.Namespace}'
+                spec:
+                  type: LoadBalancer
+                  ports:
+                    - name: http
+                      port: 80
+                      targetPort: #{OctoPetShop.WebApp.HttpPort}
+                      protocol: TCP
+                    - name: https
+                      port: 443
+                      targetPort: #{OctoPetShop.WebApp.HttpsPort}
+                      protocol: TCP
+                  selector:
+                    component: web
+                    type: main
+                
+                EOT
+            Octopus.Action.KubernetesContainers.DeploymentWait = "NoWait"
+            Octopus.Action.KubernetesContainers.Namespace = "#{OctoPetShop.Cluster.Namespace}"
+            Octopus.Action.Script.ScriptSource = "Inline"
+            OctopusUseBundledTooling = "False"
+        }
+        worker_pool = "azure-worker-pool"
+
+        packages "octopetshop-web" {
+            acquisition_location = "NotAcquired"
+            feed = "docker-hub"
+            package_id = "octopussamples/octopetshop-web"
+            properties = {
+                Extract = "False"
+                Purpose = "DockerImageReference"
+                SelectionMode = "immediate"
+            }
+        }
+    }
+}
+
+step "deploy-db-migrations" {
+    name = "Deploy DB Migrations"
+    properties = {
+        Octopus.Action.TargetRoles = "demo-k8s-cluster"
+    }
+
+    action {
+        action_type = "Octopus.KubernetesDeployRawYaml"
+        properties = {
+            Octopus.Action.Kubernetes.DeploymentTimeout = "180"
+            Octopus.Action.Kubernetes.ResourceStatusCheck = "True"
+            Octopus.Action.Kubernetes.ServerSideApply.Enabled = "False"
+            Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts = "True"
+            Octopus.Action.KubernetesContainers.CustomResourceYaml = <<-EOT
+                apiVersion: batch/v1
+                kind: Job
+                metadata:
+                  name: octopetshop-dbup
+                  namespace: '#{OctoPetShop.Cluster.Namespace}'
+                spec:
+                  ttlSecondsAfterFinished: 10
+                  template:
+                    metadata:
+                      labels:
+                        octopusexport: OctopusExport
+                    spec:
+                      containers:
+                        - name: dbup
+                          image: index.docker.io/octopussamples/octopetshop-database-enterprise
+                          env:
+                            - name: DbUpConnectionString
+                              value: '#{OctoPetShop.Database.ConnectionString}'
+                          resources:
+                            requests:
+                              memory: '#{OctoPetShop.WebApp.Container.MemoryRequest}'
+                            limits:
+                              memory: '#{OctoPetShop.WebApp.Container.MemoryLimit}'
+                      restartPolicy: Never
+                EOT
+            Octopus.Action.KubernetesContainers.Namespace = "#{OctoPetShop.Cluster.Namespace}"
+            Octopus.Action.Package.JsonConfigurationVariablesTargets = "**/*.{yml,yaml}"
+            Octopus.Action.Script.ScriptSource = "Inline"
+        }
+        worker_pool = "azure-worker-pool"
+
+        packages "dbup" {
+            acquisition_location = "NotAcquired"
+            feed = "docker-hub"
+            package_id = "octopussamples/octopetshop-database-enterprise"
+            properties = {
+                Extract = "False"
+                Purpose = "DockerImageReference"
+                SelectionMode = "immediate"
+            }
+        }
+    }
+}
+
+step "deploy-web-app-container" {
+    name = "Deploy Web App Container"
+    properties = {
+        Octopus.Action.TargetRoles = "demo-k8s-cluster"
+    }
+
+    action {
+        action_type = "Octopus.KubernetesDeployRawYaml"
+        properties = {
+            Octopus.Action.Kubernetes.DeploymentTimeout = "180"
+            Octopus.Action.Kubernetes.ResourceStatusCheck = "True"
+            Octopus.Action.Kubernetes.ServerSideApply.Enabled = "False"
+            Octopus.Action.Kubernetes.ServerSideApply.ForceConflicts = "True"
+            Octopus.Action.KubernetesContainers.CustomResourceYaml = <<-EOT
+                apiVersion: apps/v1
+                kind: Deployment
+                metadata:
+                  name: '#{OctoPetShop.WebApp.ServiceName}'
+                  labels:
+                    component: web
+                    type: main
+                  annotations:
+                    kubernetes.io/change-cause: '#{Octopus.Release.Number}'
+                  namespace: '#{OctoPetShop.Cluster.Namespace}'
+                spec:
+                  selector:
+                    matchLabels:
+                      octopusexport: OctopusExport
+                  replicas: 1
+                  strategy:
+                    type: RollingUpdate
+                  template:
+                    metadata:
+                      labels:
+                        component: web
+                        type: main
+                        octopusexport: OctopusExport
+                    spec:
+                      containers:
+                        - name: web-app
+                          image: index.docker.io/#{Octopus.Action.Package[octopetshop-web-enterprise].PackageId}:#{Octopus.Action.Package[octopetshop-web-enterprise].PackageVersion}
+                          env:
+                            - name: ASPNETCORE_URLS
+                              value: http://+:#{OctoPetShop.WebApp.HttpPort}
+                            - name: ProductServiceBaseUrl
+                              value: '#{OctoPetShop.ProductApi.Url}'
+                            - name: ShoppingCartServiceBaseUrl
+                              value: '#{OctoPetShop.ShoppingCartApi.Url}'
+                            - name: AppVersion
+                              value: '#{Octopus.Release.Number}'
+                            - name: EnvironmentName
+                              value: '#{Octopus.Environment.Name}'
+                            - name: ASPNETCORE_ENVIRONMENT
+                              value: '#{Octopus.Environment.Name}'
+                          resources:
+                            requests:
+                              memory: '#{OctoPetShop.WebApp.Container.MemoryRequest}'
+                            limits:
+                              memory: '#{OctoPetShop.WebApp.Container.MemoryLimit}'
+                EOT
+            Octopus.Action.KubernetesContainers.Namespace = "#{OctoPetShop.Cluster.Namespace}"
+            Octopus.Action.Package.JsonConfigurationVariablesTargets = "**/*.{yml,yaml}"
+            Octopus.Action.Script.ScriptSource = "Inline"
+        }
+        worker_pool_variable = ""
+
+        packages "octopetshop-web-enterprise" {
+            acquisition_location = "NotAcquired"
+            feed = "docker-hub"
+            package_id = "octopussamples/octopetshop-web-enterprise"
+            properties = {
+                Extract = "False"
+                Purpose = "DockerImageReference"
+                SelectionMode = "immediate"
+            }
+        }
+    }
+}
+
+step "launchdarkly-toggle-off-feature-flags" {
+    name = "LaunchDarkly - Toggle off feature flags"
+
+    action {
+        properties = {
+            launchdarkly-access-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+            launchdarkly-environment-key = "#{Octopus.Environmet.Name}"
+            launchdarkly-flag-key = "k6yJV_adQssw5c"
+            launchdarkly-flag-value = "False"
+            launchdarkly-project-key = "HS256"
+            Octopus.Action.Template.Id = "ActionTemplates-1701"
+            Octopus.Action.Template.Version = "5"
+        }
+        worker_pool = "azure-worker-pool"
+    }
+}
+
+step "send-completion-notification" {
+    condition = "Variable"
+    name = "Send Completion Notification"
+    properties = {
+        Octopus.Step.ConditionVariableExpression = "#{unless Octopus.Deployment.Trigger.Id}True#{/unless}"
+    }
+
+    action {
+        action_type = "Octopus.Email"
+        environments = ["production"]
+        notes = "Email the deployer that the deployment has been completed."
+        properties = {
+            Octopus.Action.Email.Body = "#{Octopus.Release.Notes}"
+            Octopus.Action.Email.IsHtml = "True"
+            Octopus.Action.Email.Subject = "Release #{Octopus.Release.Number} has been deployed to #{Octopus.Environment.Name}"
+            Octopus.Action.Email.To = "#{Octopus.Deployment.CreatedBy.EmailAddress}"
+        }
+    }
+}

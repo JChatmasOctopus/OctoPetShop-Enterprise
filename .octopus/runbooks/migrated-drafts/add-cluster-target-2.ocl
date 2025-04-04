@@ -1,0 +1,35 @@
+name = "Add Cluster Target"
+default_guided_failure_mode = "EnvironmentDefault"
+description = "Adds cluster as a target to the environment in which it runs."
+
+connectivity_policy {
+    allow_deployments_to_no_targets = true
+}
+
+run_retention_policy {
+    quantity_to_keep = 3
+}
+
+process {
+    step "add-cluster-as-target" {
+        name = "Add cluster as target"
+
+        action {
+            action_type = "Octopus.Script"
+            properties = {
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    # Get the variables
+                    $clusterName = $OctopusParameters['OctoPetShop.Enterprise.Cluster.Name']
+                    $resourceGroupName = $OctopusParameters["OctoPetShop.Enterprise.Resourcegroup.Name"]
+                    $azureLocation = $OctopusParameters['OctoPetShop.Enterprise.Location']
+                    
+                    # Add new Kubernetes cluster target
+                    New-OctopusKubernetesTarget -Name "$clusterName-#{Octopus.Environment.Name}" -clusterName $clusterName -clusterResourceGroup $resourceGroupName -octopusRoles "Enterprise-Demo" -octopusAccountIdOrName "#{OctoPetShop.Azure.Account}" -namespace "#{Octopus.Environment.Name | ToLower}" -skipTlsVerification $true -octopusDefaultWorkerPoolIdOrName "Hosted Windows" #-healthCheckContainerImageFeedIdOrName "Docker Feed TF" -healthCheckContainerImage "octopusdeploy/worker-tools:3-ubuntu.18.04"
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "PowerShell"
+            }
+            worker_pool = "hosted-windows"
+        }
+    }
+}

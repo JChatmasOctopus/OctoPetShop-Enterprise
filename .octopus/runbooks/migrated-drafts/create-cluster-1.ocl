@@ -1,0 +1,45 @@
+name = "Create cluster"
+default_guided_failure_mode = "EnvironmentDefault"
+description = "Creates a new K8s cluster in AKS using Terraform."
+
+connectivity_policy {
+    allow_deployments_to_no_targets = true
+}
+
+run_retention_policy {
+    quantity_to_keep = 3
+}
+
+process {
+    step "create-development-cluster" {
+        name = "Create Development Cluster"
+
+        action {
+            action_type = "Octopus.TerraformApply"
+            environments = ["development"]
+            properties = {
+                Octopus.Action.GoogleCloud.ImpersonateServiceAccount = "False"
+                Octopus.Action.GoogleCloud.UseVMServiceAccount = "True"
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Terraform.AllowPluginDownloads = "True"
+                Octopus.Action.Terraform.AzureAccount = "False"
+                Octopus.Action.Terraform.GoogleCloudAccount = "False"
+                Octopus.Action.Terraform.ManagedAccount = "None"
+                Octopus.Action.Terraform.PlanJsonOutput = "False"
+                Octopus.Action.Terraform.RunAutomaticFileSubstitution = "True"
+                Octopus.Action.Terraform.Template = <<-EOT
+                    provider "null" {}
+                    
+                    resource "null_resource" "example" {
+                      provisioner "local-exec" {
+                        command = "echo 'Creating dev cluster in AKS'"
+                      }
+                    }
+                    
+                    EOT
+                Octopus.Action.Terraform.TemplateParameters = "{}"
+            }
+            worker_pool = "azure-worker-pool"
+        }
+    }
+}
