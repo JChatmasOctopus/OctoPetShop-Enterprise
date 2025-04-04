@@ -1,8 +1,6 @@
 name: CI - Nuget Packages GitHub Repo
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
