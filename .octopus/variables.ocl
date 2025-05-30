@@ -179,7 +179,7 @@ variable "Octopus.Azure.ACCT" {
     }
 }
 
-variable "OctoPetShop.Azure.Account" {
+variable "OctoPetShop.Azure.ACCT" {
     type = "AzureAccount"
 
     value "octopetshop-azure-subscription" {
