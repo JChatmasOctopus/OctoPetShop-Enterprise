@@ -140,10 +140,6 @@ variable "OctoPetShop.ShoppingCartApi.ServiceName" {
     value "octopetshop-shoppingcart-api" {}
 }
 
-variable "OctoPetShop.ShoppingCartApi.Url" {
-    value "http://#{OctoPetShop.ShoppingCartApi.ServiceName}:#{OctoPetShop.ShoppingCartApi.HttpPort}/" {}
-}
-
 variable "OctoPetShop.WebApp.Container.MemoryLimit" {
     value "#{OctoPetShop.Container.MemoryLimit}" {}
 }
@@ -185,4 +181,8 @@ variable "OctoPetShop.Azure.ACCT" {
     value "octopetshop-azure-subscription" {
         action = ["deploy-sqlserver-container"]
     }
+}
+
+variable "OctoPetShop.ShoppingCartApi.Url" {
+    value "http://#{OctoPetShop.ShoppingCartApi.ServiceName}:#{OctoPetShop.ShoppingCart.HttpPort}/" {}
 }
