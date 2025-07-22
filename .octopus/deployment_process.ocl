@@ -308,6 +308,7 @@ step "deploy-db-migrations" {
 
     action {
         action_type = "Octopus.KubernetesDeployRawYaml"
+        is_disabled = true
         properties = {
             Octopus.Action.Kubernetes.DeploymentTimeout = "180"
             Octopus.Action.Kubernetes.ResourceStatusCheck = "True"
