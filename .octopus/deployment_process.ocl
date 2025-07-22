@@ -420,6 +420,7 @@ step "deploy-web-app-container" {
                 EOT
             Octopus.Action.KubernetesContainers.Namespace = "#{OctoPetShop.Cluster.Namespace}"
             Octopus.Action.Package.JsonConfigurationVariablesTargets = "**/*.{yml,yaml}"
+            Octopus.Action.RunOnServer = "false"
             Octopus.Action.Script.ScriptSource = "Inline"
         }
         worker_pool_variable = ""
@@ -434,23 +435,6 @@ step "deploy-web-app-container" {
                 SelectionMode = "immediate"
             }
         }
-    }
-}
-
-step "launchdarkly-toggle-off-feature-flags" {
-    name = "LaunchDarkly - Toggle off feature flags"
-
-    action {
-        properties = {
-            launchdarkly-access-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
-            launchdarkly-environment-key = "#{Octopus.Environmet.Name}"
-            launchdarkly-flag-key = "k6yJV_adQssw5c"
-            launchdarkly-flag-value = "False"
-            launchdarkly-project-key = "HS256"
-            Octopus.Action.Template.Id = "ActionTemplates-1701"
-            Octopus.Action.Template.Version = "5"
-        }
-        worker_pool = "azure-worker-pool"
     }
 }
 
@@ -470,6 +454,7 @@ step "send-completion-notification" {
             Octopus.Action.Email.IsHtml = "True"
             Octopus.Action.Email.Subject = "Release #{Octopus.Release.Number} has been deployed to #{Octopus.Environment.Name}"
             Octopus.Action.Email.To = "#{Octopus.Deployment.CreatedBy.EmailAddress}"
+            Octopus.Action.RunOnServer = "false"
         }
     }
 }
