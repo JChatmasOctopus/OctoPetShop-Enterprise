@@ -175,14 +175,14 @@ variable "Octopus.Azure.ACCT" {
     }
 }
 
-variable "OctoPetShop.Azure.ACCT" {
+variable "OctoPetShop.ShoppingCartApi.Url" {
+    value "http://#{OctoPetShop.ShoppingCartApi.ServiceName}:#{OctoPetShop.ShoppingCart.HttpPort}/" {}
+}
+
+variable "OctoPetShop.Azure.ACCTT" {
     type = "AzureAccount"
 
     value "octopetshop-azure-subscription" {
         action = ["deploy-sqlserver-container"]
     }
-}
-
-variable "OctoPetShop.ShoppingCartApi.Url" {
-    value "http://#{OctoPetShop.ShoppingCartApi.ServiceName}:#{OctoPetShop.ShoppingCart.HttpPort}/" {}
 }
