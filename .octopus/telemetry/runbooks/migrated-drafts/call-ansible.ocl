@@ -1,0 +1,108 @@
+name = "Call Ansible"
+default_guided_failure_mode = "EnvironmentDefault"
+description = ""
+
+connectivity_policy {
+    allow_deployments_to_no_targets = true
+}
+
+run_retention_policy {
+    quantity_to_keep = 3
+}
+
+process {
+    step "test-ansible-cli" {
+        name = "Test Ansible CLI"
+
+        action {
+            action_type = "Octopus.Script"
+            properties = {
+                Octopus.Action.Script.ScriptBody = <<-EOT
+                    echo "Hello World"
+                    ansible --version
+                    EOT
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "Bash"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+
+            container {
+                dockerfile = <<-EOT
+                        # Base image for the execution container
+                        FROM ghcr.io/octopusdeploylabs/workertools
+                        
+                        # Install Ansible
+                        RUN apt-get update && \
+                            apt-get install -y ansible
+                        
+                        # We know this won't reduce the image size at all. It's just to make the filesystem a little tidier.
+                        RUN rm -rf /tmp/*
+                        EOT
+            }
+        }
+    }
+
+    step "test-ansible-cli-clone-1" {
+        name = "Test Ansible CLI - clone (1)"
+
+        action {
+            action_type = "Octopus.Script"
+            is_disabled = true
+            properties = {
+                Octopus.Action.Script.ScriptBody = "echo \"Hello World\""
+                Octopus.Action.Script.ScriptSource = "Inline"
+                Octopus.Action.Script.Syntax = "Bash"
+                OctopusUseBundledTooling = "False"
+            }
+            worker_pool = "hosted-ubuntu"
+
+            container {
+                dockerfile = <<-EOT
+                        # Base image for the execution container
+                        FROM --platform=linux/amd64 mcr.microsoft.com/dotnet/runtime-deps:8.0 AS base
+                        
+                        ARG PS_VERSION=7.4.3
+                        
+                        # Get pre-req tooling
+                        RUN apt-get update && \
+                            apt-get install -y libc6 wget unzip apt-utils curl apt-transport-https software-properties-common jq
+                        
+                        # Get yq, yaml parser
+                        RUN wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 && \
+                            chmod a+x /usr/local/bin/yq
+                        
+                        # Download the PowerShell package file
+                        #RUN wget https://github.com/PowerShell/PowerShell/releases/download/v${PS_VERSION}/powershell_${PS_VERSION}-1.deb_amd64.deb
+                        RUN wget https://github.com/PowerShell/PowerShell/releases/download/v7.4.3/powershell_7.4.3-1.deb_amd64.deb
+                        
+                        # Install the PowerShell package
+                        #RUN dpkg -i powershell_${PS_VERSION}-1.deb_amd64.deb
+                        RUN dpkg -i powershell_7.4.3-1.deb_amd64.deb
+                        
+                        # Resolve missing dependencies and finish the install (if necessary)
+                        RUN apt-get install -f
+                        
+                        # Delete the downloaded package file
+                        RUN rm powershell_${PS_VERSION}-1.deb_amd64.deb
+                        
+                        # Get python & groff to support Python scripts in execution container
+                        RUN apt-get install -y python3-pip groff
+                        
+                        # Install the Octopus CLI
+                        RUN curl -L https://github.com/OctopusDeploy/cli/raw/main/scripts/install.sh | bash
+                        
+                        # Install Ansible
+                        RUN apt-get update && \
+                            apt-get install -y ansible
+                        
+                        # We know this won't reduce the image size at all. It's just to make the filesystem a little tidier.
+                        RUN rm -rf /tmp/*
+                        
+                        # Setting default command for the container
+                        CMD ["ansible", "--version"]
+                        EOT
+            }
+        }
+    }
+}

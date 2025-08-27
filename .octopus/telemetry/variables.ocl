@@ -1,0 +1,7 @@
+variable "Project.AWS.Account" {
+    value {}
+}
+
+variable "Project.AWS.Lambda.FunctionName" {
+    value "AggregationEngine" {}
+}

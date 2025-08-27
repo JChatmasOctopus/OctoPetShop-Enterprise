@@ -1,0 +1,89 @@
+step "aws-deploy-lambda-function" {
+    name = "AWS - Deploy Lambda Function"
+
+    action {
+        properties = {
+            AWS.Lambda.Account = "#{Project.AWS.Account}"
+            AWS.Lambda.Description = "#{Project.AWS.Lambda.FunctionDescription}"
+            AWS.Lambda.EnvironmentVariables = "#{Project.AWS.Lambda.EnvironmentVariables}"
+            AWS.Lambda.FunctionHandler = "#{Project.AWS.Lambda.FunctionHandler}"
+            AWS.Lambda.FunctionName = "#{Project.AWS.Lambda.FunctionName}"
+            AWS.Lambda.FunctionRole = "#{Project.AWS.Lambda.Role}"
+            AWS.Lambda.MemorySize = "128"
+            AWS.Lambda.Package = "{\"PackageId\":\"RandomQuotes\",\"FeedId\":\"octopus-server-built-in\"}"
+            AWS.Lambda.Publish = "Yes"
+            AWS.Lambda.Region = "eu-west-1"
+            AWS.Lambda.Runtime = "nodejs12.x"
+            Octopus.Action.Template.Id = "ActionTemplates-1481"
+            Octopus.Action.Template.Version = "8"
+        }
+        worker_pool_variable = ""
+
+        packages "AWS.Lambda.Package" {
+            acquisition_location = "Server"
+            feed = "octopus-server-built-in"
+            package_id = "RandomQuotes"
+            properties = {
+                Extract = "False"
+                PackageParameterName = "AWS.Lambda.Package"
+                SelectionMode = "deferred"
+            }
+        }
+    }
+}
+
+step "run-an-aws-cli-script" {
+    name = "Run an AWS CLI Script"
+
+    action {
+        action_type = "Octopus.AwsRunScript"
+        properties = {
+            Octopus.Action.Aws.AssumeRole = "False"
+            Octopus.Action.Aws.Region = "#{Project.AWS.Region}"
+            Octopus.Action.AwsAccount.UseInstanceRole = "False"
+            Octopus.Action.AwsAccount.Variable = "#{Project.AWS.Account}"
+            Octopus.Action.Script.ScriptBody = <<-EOT
+                $functionName = $OctopusParameters["Project.AWS.Lambda.FunctionName"]
+                
+                aws lambda invoke --function-name $functionName response.json
+                EOT
+            Octopus.Action.Script.ScriptSource = "Inline"
+            Octopus.Action.Script.Syntax = "PowerShell"
+            OctopusUseBundledTooling = "False"
+        }
+        worker_pool_variable = ""
+    }
+}
+
+step "deploy-child-octopus-deploy-project" {
+    name = "Deploy Child Octopus Deploy Project"
+    properties = {
+        Octopus.Action.TargetRoles = "octofx-web-4"
+    }
+
+    action {
+        properties = {
+            ChildProject.CancelDeployment.Seconds = "1800"
+            ChildProject.Deployment.FutureTime = "N/A"
+            ChildProject.Deployment.IgnoreSpecificMachineMismatch = "No"
+            ChildProject.DeploymentMode.Value = "Promote"
+            ChildProject.Destination.EnvironmentName = "#{Octopus.Environment.Name}"
+            ChildProject.ManualIntervention.EnvironmentToUse = "#{Octopus.Environment.Name}"
+            ChildProject.ManualIntervention.Tenant.Name = "#{Octopus.Deployment.Tenant.Name}"
+            ChildProject.ManualInterventions.UseApprovalsFromParent = "Yes"
+            ChildProject.RefreshVariableSnapShots.Option = "No"
+            ChildProject.Release.NotFoundError = "Warning"
+            ChildProject.ReleaseNotes.SaveAsArtifact = "No"
+            ChildProject.Space.Name = "#{Octopus.Space.Name}"
+            ChildProject.Target.MachineNames = "N/A"
+            ChildProject.Tenant.Name = "#{Octopus.Deployment.Tenant.Name}"
+            ChildProject.WaitForFinish.Value = "Yes"
+            ChildProject.Web.ServerUrl = "#{Octopus.Web.ServerUri}"
+            ChildProject.WhatIf.Value = "No"
+            Octopus.Action.RunOnServer = "false"
+            Octopus.Action.Template.Id = "ActionTemplates-1842"
+            Octopus.Action.Template.Version = "27"
+        }
+        worker_pool_variable = ""
+    }
+}
