@@ -12,6 +12,10 @@ variable "OctoPetShop.CleanedEnvironmentName" {
         description = ""
         environment = ["production"]
     }
+
+    value "#{Octopus.Environment.Name}" {
+        description = ""
+    }
 }
 
 variable "OctoPetShop.CleanedSpaceName" {
