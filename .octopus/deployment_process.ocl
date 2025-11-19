@@ -1,3 +1,17 @@
+step "approve-production-deployment" {
+    name = "Approve production deployment"
+
+    action {
+        action_type = "Octopus.Manual"
+        environments = ["production"]
+        properties = {
+            Octopus.Action.Manual.BlockConcurrentDeployments = "False"
+            Octopus.Action.Manual.Instructions = "Please approve production deployment."
+            Octopus.Action.Manual.ResponsibleTeamIds = "global/octopus-administrators"
+        }
+    }
+}
+
 step "notify-deployment-starting" {
     name = "Notify Production Deployment Starting"
 
