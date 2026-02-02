@@ -62,10 +62,6 @@ variable "OctoPetShop.Enterprise.Cluster.Name" {
     value "jc-enterprise-demo" {}
 }
 
-variable "OctoPetShop.Enterprise.Location" {
-    value "eastus" {}
-}
-
 variable "OctoPetShop.Enterprise.Resourcegroup.Name" {
     value "JC-Enterprise-Demo" {}
 }
@@ -185,4 +181,8 @@ variable "OctoPetShop.Azure.ACCTT" {
     value "octopetshop-azure-subscription" {
         action = ["deploy-sqlserver-container"]
     }
+}
+
+variable "OctoPetShop.Enterprise.Location" {
+    value "eastus2" {}
 }
