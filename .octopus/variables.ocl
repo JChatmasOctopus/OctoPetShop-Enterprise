@@ -22,14 +22,6 @@ variable "OctoPetShop.Cluster.Namespace" {
     value "#{OctoPetShop.CleanedEnvironmentName}-full" {}
 }
 
-variable "OctoPetShop.Container.MemoryLimit" {
-    value "500Mi" {}
-}
-
-variable "OctoPetShop.Container.MemoryRequest" {
-    value "10Mi" {}
-}
-
 variable "OctoPetShop.Database.ConnectionString" {
     value "Data Source=#{OctoPetShop.Database.Server};Initial Catalog=#{OctoPetShop.Database.Name};Persist Security Info=False;User ID=#{OctoPetShop.Database.User};Password=#{OctoPetShop.Database.Password};TrustServerCertificate=true" {}
 }
@@ -60,10 +52,6 @@ variable "OctoPetShop.Database.User" {
 
 variable "OctoPetShop.Enterprise.Cluster.Name" {
     value "jc-enterprise-demo" {}
-}
-
-variable "OctoPetShop.Enterprise.Resourcegroup.Name" {
-    value "JC-Enterprise-Demo" {}
 }
 
 variable "OctoPetShop.K8s.API.SecretName" {
@@ -185,4 +173,16 @@ variable "OctoPetShop.Azure.ACCTT" {
 
 variable "OctoPetShop.Enterprise.Location" {
     value "eastus2" {}
+}
+
+variable "OctoPetShop.Container.MemoryLimit" {
+    value "5000000Mi" {}
+}
+
+variable "OctoPetShop.Container.MemoryRequest" {
+    value "100000Mi" {}
+}
+
+variable "OctoPetShop.Enterprise.Resourcegroup.Name" {
+    value "TEST-Enterprise-Demo" {}
 }
